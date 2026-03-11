@@ -1,128 +1,533 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>WebAR Transparent</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>AR Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
 
-<script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Outfit', sans-serif;
+            color: white;
+            background: #000;
+        }
 
-<style>
-html, body {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  width: 100%;
-  height: 100%;
-  background: transparent;
-}
+        a-scene {
+            position: fixed !important;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+        }
 
-a-scene {
-  position: fixed !important;
-  top: 0;
-  left: 0;
-  width: 100vw !important;
-  height: 100vh !important;
-  background: transparent !important;
-}
+        /* Floating video overlay */
+        #video-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
+            pointer-events: none;
+        }
 
-.instruction-container {
-  position: fixed;
-  bottom: 30px;
-  width: 100%;
-  text-align: center;
-  z-index: 999;
-  pointer-events: none;
-}
+        #video-overlay.active {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
 
-.instruction-text {
-  font-size: 1rem;
-  color: #4facfe;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 10px 20px;
-  border-radius: 10px;
-  border: 1px solid #4facfe;
-  display: inline-block;
-  text-transform: uppercase;
-}
-</style>
+        .video-wrapper {
+            position: relative;
+            width: 92%;
+            max-width: 480px;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.12);
+            background: #000;
+            transform: scale(0.92);
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        #video-overlay.active .video-wrapper {
+            transform: scale(1);
+        }
+
+        #ar-video {
+            width: 100%;
+            display: block;
+            border-radius: 20px;
+        }
+
+        /* Close button */
+        #close-video-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 10;
+            transition: background 0.2s, transform 0.15s;
+        }
+
+        #close-video-btn:active {
+            transform: scale(0.9);
+            background: rgba(220, 50, 50, 0.6);
+        }
+
+        #close-video-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: white;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+        }
+
+        /* UI Layer */
+        #ui-layer {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Menu button */
+        #menu-btn {
+            position: absolute;
+            top: 24px; right: 24px;
+            width: 50px; height: 50px;
+            border-radius: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+            z-index: 1001;
+            pointer-events: auto;
+            background: rgba(20, 20, 20, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.15);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+
+        #menu-btn:active {
+            transform: scale(0.95);
+            background: rgba(20,20,20,0.6);
+        }
+
+        #menu-btn svg {
+            fill: rgba(255,255,255,0.9);
+            width: 24px; height: 24px;
+        }
+
+        /* Settings modal */
+        #settings-modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            pointer-events: auto;
+        }
+
+        #settings-modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .settings-card {
+            background: rgba(30,30,30,0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
+            padding: 32px;
+            width: 85%;
+            max-width: 340px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        #settings-modal.active .settings-card {
+            transform: scale(1);
+        }
+
+        .settings-card h2 {
+            margin-top: 0;
+            margin-bottom: 24px;
+            font-size: 1.5rem;
+            font-weight: 500;
+            text-align: center;
+            color: white;
+            letter-spacing: 0.5px;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .setting-label {
+            font-size: 1rem;
+            font-weight: 400;
+            color: rgba(255,255,255,0.9);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 46px; height: 26px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255,255,255,0.15);
+            transition: .3s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px; width: 20px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input:checked + .slider { background-color: #3b82f6; }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        #close-settings {
+            background: white;
+            color: black;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: block;
+            margin: 0 auto;
+        }
+        #close-settings:active { opacity: 0.8; }
+
+        /* Viewfinder corners */
+        #viewfinder-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 900;
+        }
+
+        .corner-guide {
+            position: absolute;
+            width: 40px; height: 40px;
+            border-color: rgba(255,255,255,0.4);
+            border-style: solid;
+            border-width: 0;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        .corner-top-left    { top: 30px;    left: 30px;  border-top-width: 2px;    border-left-width: 2px;  }
+        .corner-top-right   { top: 30px;    right: 30px; border-top-width: 2px;    border-right-width: 2px; }
+        .corner-bottom-left { bottom: 30px; left: 30px;  border-bottom-width: 2px; border-left-width: 2px;  }
+        .corner-bottom-right{ bottom: 30px; right: 30px; border-bottom-width: 2px; border-right-width: 2px; }
+
+        /* Instruction pill */
+        .instruction-container {
+            position: absolute;
+            bottom: 50px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 1002;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .instruction-pill {
+            background: rgba(15,15,15,0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px 24px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .instruction-text {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 500;
+            font-size: 1rem;
+            color: white;
+            letter-spacing: 0.5px;
+        }
+
+        .hidden-ui {
+            opacity: 0;
+            transform: translateY(10px);
+            pointer-events: none;
+        }
+    </style>
 </head>
-
 <body>
 
-<div class="instruction-container" id="instruction-container">
-  <div class="instruction-text">
-    Point camera at image
-  </div>
-</div>
+    <!-- A-Frame AR Scene -->
+    <a-scene
+        mindar-image="imageTargetSrc: targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+        color-space="sRGB"
+        renderer="colorManagement: true; physicallyCorrectLights: true"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+    >
+        <a-assets>
+            <!-- CHANGE: replace your-video.mp4 with your actual video file -->
+            <video id="myVideo"
+                src="your-video.mp4"
+                preload="auto"
+                playsinline
+                webkit-playsinline
+                loop="false"
+                muted="true"
+                crossorigin="anonymous">
+            </video>
+        </a-assets>
 
-<a-scene
-  mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; uiLoading: no;"
-  vr-mode-ui="enabled: false"
-  device-orientation-permission-ui="enabled: false"
-  renderer="colorManagement: true; alpha: true;"
-  color-space="sRGB">
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-  <a-assets>
-    <video id="ar-video"
-      src="./video.mp4"
-      preload="auto"
-      loop
-      playsinline
-      webkit-playsinline
-      crossorigin="anonymous">
-    </video>
-  </a-assets>
+        <a-entity mindar-image-target="targetIndex: 0">
+            <a-video
+                src="#myVideo"
+                width="1" height="0.552"
+                position="0 0 0.001"
+                rotation="0 0 0">
+            </a-video>
+        </a-entity>
+    </a-scene>
 
-  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <!-- Floating Video Overlay — persists after target is lost -->
+    <div id="video-overlay">
+        <div class="video-wrapper">
+            <!-- CHANGE: replace your-video.mp4 with your actual video file -->
+            <video id="ar-video"
+                src="your-video.mp4"
+                playsinline
+                webkit-playsinline
+                controls>
+            </video>
+            <button id="close-video-btn" title="Close video">
+                <svg viewBox="0 0 16 16">
+                    <line x1="2" y1="2" x2="14" y2="14"/>
+                    <line x1="14" y1="2" x2="2" y2="14"/>
+                </svg>
+            </button>
+        </div>
+    </div>
 
-  <a-entity mindar-image-target="targetIndex: 0" id="target">
-    <a-video
-      src="#ar-video"
-      width="0.56"
-      height="1"
-      position="0 0 0">
-    </a-video>
-  </a-entity>
+    <!-- UI Layer -->
+    <div id="ui-layer">
 
-</a-scene>
+        <!-- Viewfinder corners -->
+        <div id="viewfinder-layer">
+            <div class="corner-guide corner-top-left"></div>
+            <div class="corner-guide corner-top-right"></div>
+            <div class="corner-guide corner-bottom-left"></div>
+            <div class="corner-guide corner-bottom-right"></div>
+        </div>
 
-<script>
-const video = document.getElementById('ar-video');
-const target = document.getElementById('target');
-const instruction = document.getElementById('instruction-container');
+        <!-- Menu button -->
+        <div id="menu-btn">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 6h16M4 12h16M4 18h16"
+                    stroke="rgba(255,255,255,0.9)"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    fill="none"/>
+            </svg>
+        </div>
 
-let visible = false;
+        <!-- Instruction pill -->
+        <div class="instruction-container" id="instruction-ui">
+            <div class="instruction-pill">
+                <svg class="instruction-icon" viewBox="0 0 24 24" fill="none"
+                    stroke="white" stroke-width="2" stroke-linecap="round"
+                    style="width:18px;height:18px;opacity:0.8">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <span class="instruction-text">Point camera at the image</span>
+            </div>
+        </div>
+    </div>
 
-// Mobile autoplay fix
-video.muted = true;
-video.setAttribute("playsinline", "");
-video.setAttribute("webkit-playsinline", "");
+    <!-- Settings Modal -->
+    <div id="settings-modal">
+        <div class="settings-card">
+            <h2>Settings</h2>
+            <div class="setting-row">
+                <span class="setting-label">Sound</span>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-sound" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Auto-play</span>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-autoplay" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <button id="close-settings">Done</button>
+        </div>
+    </div>
 
-// When image detected
-target.addEventListener('targetFound', () => {
-  visible = true;
-  instruction.style.display = "none";
-  video.play().catch(() => {});
-});
+    <script>
+        /* ── State ── */
+        let videoPlaying     = false;
+        let targetVisible    = false;
+        let overlayDismissed = false;
+        let soundEnabled     = true;
+        let autoPlayEnabled  = true;
 
-// When image lost
-target.addEventListener('targetLost', () => {
-  visible = false;
-  instruction.style.display = "block";
-  video.pause();
-});
+        const overlay   = document.getElementById('video-overlay');
+        const arVideo   = document.getElementById('ar-video');
+        const closeBtn  = document.getElementById('close-video-btn');
+        const menuBtn   = document.getElementById('menu-btn');
+        const settModal = document.getElementById('settings-modal');
+        const closeSett = document.getElementById('close-settings');
+        const instrUI   = document.getElementById('instruction-ui');
+        const toggleSnd = document.getElementById('toggle-sound');
+        const toggleAP  = document.getElementById('toggle-autoplay');
 
-// Unlock audio after tap
-document.addEventListener("click", () => {
-  if (visible) {
-    video.muted = false;
-    video.play().catch(() => {});
-  }
-});
-</script>
+        /* ── Show overlay & play ── */
+        function showOverlay() {
+            overlayDismissed    = false;
+            arVideo.muted       = !soundEnabled;
+            overlay.classList.add('active');
+            arVideo.play().catch(() => {});
+            videoPlaying = true;
+            instrUI.classList.add('hidden-ui');
+        }
 
+        /* ── Hide overlay & pause ── */
+        function hideOverlay() {
+            overlay.classList.remove('active');
+            arVideo.pause();
+            videoPlaying = false;
+        }
+
+        /* ── Close button: user cancels mid-play ── */
+        closeBtn.addEventListener('click', () => {
+            overlayDismissed = true;          // don't auto-play again this scan
+            hideOverlay();
+            const aframeVid = document.getElementById('myVideo');
+            if (aframeVid) aframeVid.pause();
+            instrUI.classList.remove('hidden-ui');
+        });
+
+        /* ── Video finished naturally ── */
+        arVideo.addEventListener('ended', () => {
+            videoPlaying     = false;
+            overlayDismissed = false;         // allow replay on next target find
+            hideOverlay();
+            instrUI.classList.remove('hidden-ui');
+        });
+
+        /* ── MindAR target events ── */
+        document.addEventListener('DOMContentLoaded', () => {
+            const sceneEl = document.querySelector('a-scene');
+
+            /* Target found → start playing overlay */
+            sceneEl.addEventListener('targetFound', () => {
+                targetVisible = true;
+
+                if (!overlayDismissed && autoPlayEnabled) {
+                    // Keep A-Frame video in sync (muted — browser policy)
+                    const aframeVid = document.getElementById('myVideo');
+                    if (aframeVid) {
+                        aframeVid.currentTime = arVideo.currentTime;
+                        aframeVid.muted = true;
+                        aframeVid.play().catch(() => {});
+                    }
+                    if (!videoPlaying) showOverlay();
+                }
+
+                instrUI.classList.add('hidden-ui');
+            });
+
+            /* Target lost → overlay KEEPS playing, camera runs in background */
+            sceneEl.addEventListener('targetLost', () => {
+                targetVisible = false;
+                // intentionally do nothing to the overlay — video continues
+                if (!videoPlaying) {
+                    instrUI.classList.remove('hidden-ui');
+                }
+            });
+        });
+
+        /* ── Settings ── */
+        menuBtn.addEventListener('click', () => settModal.classList.add('active'));
+        closeSett.addEventListener('click', () => settModal.classList.remove('active'));
+        settModal.addEventListener('click', (e) => {
+            if (e.target === settModal) settModal.classList.remove('active');
+        });
+
+        toggleSnd.addEventListener('change', () => {
+            soundEnabled  = toggleSnd.checked;
+            arVideo.muted = !soundEnabled;
+        });
+
+        toggleAP.addEventListener('change', () => {
+            autoPlayEnabled = toggleAP.checked;
+        });
+    </script>
 </body>
 </html>
-
-
